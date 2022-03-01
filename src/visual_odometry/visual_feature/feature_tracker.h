@@ -72,14 +72,14 @@ public:
     ros::NodeHandle n;
     // publisher for visualization
     ros::Publisher pub_depth_feature;
-    ros::Publisher pub_depth_image;
-    ros::Publisher pub_depth_cloud;
+    ros::Publisher pub_depth_image;        // visualization project points on image for visualization (it's slow!)
+    ros::Publisher pub_depth_cloud;//投影到深度图像后，降采样的雷达点云 /vins/depth/depth_cloud
 
     tf::TransformListener listener;
     tf::StampedTransform transform;
 
     const int num_bins = 360;
-    vector<vector<PointType>> pointsArray;
+    vector<vector<PointType>> pointsArray; //深度图像内的点
 
     DepthRegister(ros::NodeHandle n_in):
     n(n_in)
@@ -94,6 +94,13 @@ public:
             pointsArray[i].resize(num_bins);
     }
 
+    /**  从lidar点云获取iamge特征点的深度
+     *   stamp_cur 影像时间戳
+     *   imageCur 影像
+     *   depthCloud 累积的lidar点云
+     *   camera_model 相机模型
+     *   feature_2d 2d特征点（相机系归一化坐标）
+     */
     sensor_msgs::ChannelFloat32 get_depth(const ros::Time& stamp_cur, const cv::Mat& imageCur, 
                                           const pcl::PointCloud<PointType>::Ptr& depthCloud,
                                           const camodocal::CameraPtr& camera_model ,
@@ -108,6 +115,7 @@ public:
         if (depthCloud->size() == 0)
             return depth_of_point;
 
+        //从tf获取vins_body_ros 到 vins_world的变换
         // 0.3 look up transform at current image time
         try{
             listener.waitForTransform("vins_world", "vins_body_ros", stamp_cur, ros::Duration(0.01));
@@ -124,14 +132,15 @@ public:
         zCur = transform.getOrigin().z();
         tf::Matrix3x3 m(transform.getRotation());
         m.getRPY(rollCur, pitchCur, yawCur);
+        //当前帧变换矩阵  global  <-- camera
         Eigen::Affine3f transNow = pcl::getTransformation(xCur, yCur, zCur, rollCur, pitchCur, yawCur);
 
         // 0.4 transform cloud from global frame to camera frame
-        pcl::PointCloud<PointType>::Ptr depth_cloud_local(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr depth_cloud_local(new pcl::PointCloud<PointType>());//cloud in camera frame
         pcl::transformPointCloud(*depthCloud, *depth_cloud_local, transNow.inverse());
 
         // 0.5 project undistorted normalized (z) 2d features onto a unit sphere
-        pcl::PointCloud<PointType>::Ptr features_3d_sphere(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr features_3d_sphere(new pcl::PointCloud<PointType>());//相机系 视觉特征点归一化坐标投影到单位球坐标
         for (int i = 0; i < (int)features_2d.size(); ++i)
         {
             // normalize 2d feature to a unit sphere
@@ -147,6 +156,7 @@ public:
         }
 
         // 3. project depth cloud on a range image, filter points satcked in the same region
+        //深度图像分辨率
         float bin_res = 180.0 / (float)num_bins; // currently only cover the space in front of lidar (-90 ~ 90)
         cv::Mat rangeImage = cv::Mat(num_bins, num_bins, CV_32F, cv::Scalar::all(FLT_MAX));
 
@@ -185,10 +195,11 @@ public:
             }
         }
         *depth_cloud_local = *depth_cloud_local_filter2;
+        //发布深度图像降采样后的的雷达点云
         publishCloud(&pub_depth_cloud, depth_cloud_local, stamp_cur, "vins_body_ros");
 
         // 5. project depth cloud onto a unit sphere
-        pcl::PointCloud<PointType>::Ptr depth_cloud_unit_sphere(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr depth_cloud_unit_sphere(new pcl::PointCloud<PointType>());//depth cloud in unit sphere
         for (int i = 0; i < (int)depth_cloud_local->size(); ++i)
         {
             PointType p = depth_cloud_local->points[i];
@@ -196,7 +207,7 @@ public:
             p.x /= range;
             p.y /= range;
             p.z /= range;
-            p.intensity = range;
+            p.intensity = range;//intensity记录点到相机距离
             depth_cloud_unit_sphere->push_back(p);
         }
         if (depth_cloud_unit_sphere->size() < 10)
@@ -237,11 +248,11 @@ public:
 
                 Eigen::Vector3f N = (A - B).cross(B - C);
                 float s = (N(0) * A(0) + N(1) * A(1) + N(2) * A(2)) 
-                        / (N(0) * V(0) + N(1) * V(1) + N(2) * V(2));
+                        / (N(0) * V(0) + N(1) * V(1) + N(2) * V(2));//恢复的距离
 
                 float min_depth = min(r1, min(r2, r3));
                 float max_depth = max(r1, max(r2, r3));
-                if (max_depth - min_depth > 2 || s <= 0.5)
+                if (max_depth - min_depth > 2 || s <= 0.5)//判断深度是否满足要求，邻近点距离不能偏差太大，也不能太接近？
                 {
                     continue;
                 } else if (s - max_depth > 0) {
@@ -254,7 +265,7 @@ public:
                 features_3d_sphere->points[i].y *= s;
                 features_3d_sphere->points[i].z *= s;
                 // the obtained depth here is for unit sphere, VINS estimator needs depth for normalized feature (by value z), (lidar x = camera z)
-                features_3d_sphere->points[i].intensity = features_3d_sphere->points[i].x;
+                features_3d_sphere->points[i].intensity = features_3d_sphere->points[i].x;//相机系下深度，即lidar单位求中的x方向
             }
         }
 

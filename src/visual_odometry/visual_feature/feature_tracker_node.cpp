@@ -2,15 +2,19 @@
 
 #define SHOW_UNDISTORTION 0
 
+/** sub  image_raw,  cloud_deskewed
+ *  pub  vins/feature/restart,  vins/feature/feature,  vins/feature/feature_img
+ */
 
 // mtx lock for two threads
 std::mutex mtx_lidar;
 
 // global variable for saving the depthCloud shared between two threads
+//将5s内的点云累积，并voxel grid降采样
 pcl::PointCloud<PointType>::Ptr depthCloud(new pcl::PointCloud<PointType>());
 
 // global variables saving the lidar point cloud
-deque<pcl::PointCloud<PointType>> cloudQueue;
+deque<pcl::PointCloud<PointType>> cloudQueue; //点云队列，保存5s内的点云
 deque<double> timeQueue;
 
 // global depth register for obtaining depth of a feature
@@ -18,7 +22,7 @@ DepthRegister *depthRegister;
 
 // feature publisher for VINS estimator
 ros::Publisher pub_feature;
-ros::Publisher pub_match;
+ros::Publisher pub_match;  //"/vins/feature/feature_img"
 ros::Publisher pub_restart;
 
 // feature tracker variables
@@ -35,13 +39,15 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
 {
     double cur_img_time = img_msg->header.stamp.toSec();
 
-    if(first_image_flag)
+    if(first_image_flag)//第一帧影像
     {
         first_image_flag = false;
         first_image_time = cur_img_time;
         last_image_time = cur_img_time;
         return;
     }
+
+    //通过时间判断相机是否稳定，时间戳不正确则restart
     // detect unstable camera stream
     if (cur_img_time - last_image_time > 1.0 || cur_img_time < last_image_time)
     {
@@ -58,7 +64,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
     // frequency control
     if (round(1.0 * pub_count / (cur_img_time - first_image_time)) <= FREQ)
     {
-        PUB_THIS_FRAME = true;
+        PUB_THIS_FRAME = true; //按频率发布图像
         // reset the frequency control
         if (abs(1.0 * pub_count / (cur_img_time - first_image_time) - FREQ) < 0.01 * FREQ)
         {
@@ -71,6 +77,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         PUB_THIS_FRAME = false;
     }
 
+    //Convert an immutable sensor_msgs::Image message to an OpenCV-compatible CvImage
     cv_bridge::CvImageConstPtr ptr;
     if (img_msg->encoding == "8UC1")
     {
@@ -87,18 +94,19 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
     else
         ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::MONO8);
 
-    cv::Mat show_img = ptr->image;
+    cv::Mat show_img = ptr->image;//记录输入影像
     TicToc t_r;
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         ROS_DEBUG("processing camera %d", i);
         if (i != 1 || !STEREO_TRACK)
+            //函数内部完成特征提取和跟踪
             trackerData[i].readImage(ptr->image.rowRange(ROW * i, ROW * (i + 1)), cur_img_time);
         else
         {
             if (EQUALIZE)
             {
-                cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+                cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();// 直方图均衡化
                 clahe->apply(ptr->image.rowRange(ROW * i, ROW * (i + 1)), trackerData[i].cur_img);
             }
             else
@@ -110,6 +118,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         #endif
     }
 
+    //更新特征点id
     for (unsigned int i = 0;; i++)
     {
         bool completed = false;
@@ -120,6 +129,9 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
             break;
     }
 
+    //1、将特征点id，矫正后归一化平面的3D点(x,y,z=1)，像素2D点(u,v)，像素的速度(vx,vy)，深度（depth）
+    //封装成sensor_msgs::PointCloudPtr类型的feature_points实例中,发布到pub_feature;
+    //2、将图像封装到cv_bridge::cvtColor类型的ptr实例中发布到pub_match
    if (PUB_THIS_FRAME)
    {
         pub_count++;
@@ -131,7 +143,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         sensor_msgs::ChannelFloat32 velocity_y_of_point;
 
         feature_points->header.stamp = img_msg->header.stamp;
-        feature_points->header.frame_id = "vins_body";
+        feature_points->header.frame_id = "vins_body"; //vins world系
 
         vector<set<int>> hash_ids(NUM_OF_CAM);
         for (int i = 0; i < NUM_OF_CAM; i++)
@@ -142,11 +154,11 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
             auto &pts_velocity = trackerData[i].pts_velocity;
             for (unsigned int j = 0; j < ids.size(); j++)
             {
-                if (trackerData[i].track_cnt[j] > 1)
+                if (trackerData[i].track_cnt[j] > 1)//跟踪到的次数大于1
                 {
                     int p_id = ids[j];
                     hash_ids[i].insert(p_id);
-                    geometry_msgs::Point32 p;
+                    geometry_msgs::Point32 p; //归一化坐标
                     p.x = un_pts[j].x;
                     p.y = un_pts[j].y;
                     p.z = 1;
@@ -170,9 +182,10 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         // get feature depth from lidar point cloud
         pcl::PointCloud<PointType>::Ptr depth_cloud_temp(new pcl::PointCloud<PointType>());
         mtx_lidar.lock();
-        *depth_cloud_temp = *depthCloud;
+        *depth_cloud_temp = *depthCloud;//5帧内的激光点云
         mtx_lidar.unlock();
 
+        //从lidar点云获取iamge特征点的深度
         sensor_msgs::ChannelFloat32 depth_of_points = depthRegister->get_depth(img_msg->header.stamp, show_img, depth_cloud_temp, trackerData[0].m_camera, feature_points->points);
         feature_points->channels.push_back(depth_of_points);
         
@@ -184,6 +197,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         else
             pub_feature.publish(feature_points);
 
+        //可视化
         // publish features in image
         if (pub_match.getNumSubscribers() != 0)
         {
@@ -225,7 +239,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
 void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
 {
     static int lidar_count = -1;
-    if (++lidar_count % (LIDAR_SKIP+1) != 0)
+    if (++lidar_count % (LIDAR_SKIP+1) != 0)//lidar_skip: 3 间隔3帧累积
         return;
 
     // 0. listen to transform
@@ -246,6 +260,7 @@ void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
     zCur = transform.getOrigin().z();
     tf::Matrix3x3 m(transform.getRotation());
     m.getRPY(rollCur, pitchCur, yawCur);
+    // vins_world  <--  vins_body_ros(camera)
     Eigen::Affine3f transNow = pcl::getTransformation(xCur, yCur, zCur, rollCur, pitchCur, yawCur);
 
     // 1. convert laser cloud message to pcl
@@ -289,7 +304,7 @@ void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
     // 7. pop old cloud
     while (!timeQueue.empty())
     {
-        if (timeScanCur - timeQueue.front() > 5.0)
+        if (timeScanCur - timeQueue.front() > 5.0)//只保留5s内的点云
         {
             cloudQueue.pop_front();
             timeQueue.pop_front();
@@ -302,7 +317,7 @@ void lidar_callback(const sensor_msgs::PointCloud2ConstPtr& laser_msg)
     // 8. fuse global cloud
     depthCloud->clear();
     for (int i = 0; i < (int)cloudQueue.size(); ++i)
-        *depthCloud += cloudQueue[i];
+        *depthCloud += cloudQueue[i];//depthCloud 重新记录lidar点云
 
     // 9. downsample global cloud
     pcl::PointCloud<PointType>::Ptr depthCloudDS(new pcl::PointCloud<PointType>());

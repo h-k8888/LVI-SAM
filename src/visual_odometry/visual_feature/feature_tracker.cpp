@@ -84,6 +84,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
     TicToc t_r;
     cur_time = _cur_time;
 
+    //均衡化
     if (EQUALIZE)
     {
         cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
@@ -162,7 +163,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
     prev_un_pts = cur_un_pts;
     cur_img = forw_img;
     cur_pts = forw_pts;
-    undistortedPoints();
+    undistortedPoints();//图像畸变纠正，计算像素速度
     prev_time = cur_time;
 }
 
