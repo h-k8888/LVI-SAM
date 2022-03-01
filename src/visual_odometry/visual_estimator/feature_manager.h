@@ -54,7 +54,7 @@ class FeaturePerId
     bool is_outlier;
     bool is_margin;
     double estimated_depth;
-    bool lidar_depth_flag;
+    bool lidar_depth_flag;//depth是否来自lidar
     int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail;
 
     Vector3d gt_p;

@@ -73,6 +73,7 @@ class Estimator
     Matrix3d ric[NUM_OF_CAM];
     Vector3d tic[NUM_OF_CAM];
 
+    //滑窗中的[P,V,R,Ba,Bg]  eigen
     Vector3d Ps[(WINDOW_SIZE + 1)];
     Vector3d Vs[(WINDOW_SIZE + 1)];
     Matrix3d Rs[(WINDOW_SIZE + 1)];
@@ -82,9 +83,9 @@ class Estimator
 
     Matrix3d back_R0, last_R, last_R0;
     Vector3d back_P0, last_P, last_P0;
-    std_msgs::Header Headers[(WINDOW_SIZE + 1)];
+    std_msgs::Header Headers[(WINDOW_SIZE + 1)];//滑窗内的时间戳
 
-    IntegrationBase *pre_integrations[(WINDOW_SIZE + 1)];
+    IntegrationBase *pre_integrations[(WINDOW_SIZE + 1)];//滑窗内的预积分
     Vector3d acc_0, gyr_0;
 
     vector<double> dt_buf[(WINDOW_SIZE + 1)];

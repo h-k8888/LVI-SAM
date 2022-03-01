@@ -56,8 +56,8 @@ class ImageFrame
         bool is_key_frame;
 
         // Lidar odometry info
-        int reset_id;
-        Vector3d T;
+        int reset_id; //lidar里程计的id，用于判断lidar里程计是否来自同一个序列
+        Vector3d T;//来自雷达里程计的状态量
         Matrix3d R;
         Vector3d V;
         Vector3d Ba;
@@ -98,7 +98,7 @@ public:
         // pop old odometry msg
         while (!odomQueue.empty()) 
         {
-            if (odomQueue.front().header.stamp.toSec() < img_time - 0.05)
+            if (odomQueue.front().header.stamp.toSec() < img_time - 0.05)//lidar里程计时间太早，丢掉
                 odomQueue.pop_front();
             else
                 break;
@@ -110,11 +110,12 @@ public:
         }
 
         // find the odometry time that is the closest to image time
+        // 按IMU的频率找到早于image时间且最近的一帧lidar里程计
         for (int i = 0; i < (int)odomQueue.size(); ++i)
         {
-            odomCur = odomQueue[i];
+            odomCur = odomQueue[i];//早于image时间且最近的一帧lidar里程计
 
-            if (odomCur.header.stamp.toSec() < img_time - 0.002) // 500Hz imu
+            if (odomCur.header.stamp.toSec() < img_time - 0.002) //todo 500Hz imu
                 continue;
             else
                 break;
@@ -126,6 +127,7 @@ public:
             return odometry_channel;
         }
 
+        //将lidar里程计转换到相机系，仅旋转，假设lidar camera IMU很接近
         // convert odometry rotation from lidar ROS frame to VINS camera frame (only rotation, assume lidar, camera, and IMU are close enough)
         tf::Quaternion q_odom_lidar;
         tf::quaternionMsgToTF(odomCur.pose.pose.orientation, q_odom_lidar);
@@ -152,6 +154,7 @@ public:
         // odomCur.child_frame_id = "vins_body";
         // pub_latest_odometry.publish(odomCur);
 
+        //id(1), P(3), Q(4), V(3), Ba(3), Bg(3), gravity(1)
         odometry_channel[0] = odomCur.pose.covariance[0];
         odometry_channel[1] = odomCur.pose.pose.position.x;
         odometry_channel[2] = odomCur.pose.pose.position.y;

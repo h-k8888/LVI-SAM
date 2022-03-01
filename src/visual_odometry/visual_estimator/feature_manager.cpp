@@ -25,6 +25,7 @@ void FeatureManager::clearState()
     feature.clear();
 }
 
+//返回出现次数>=2，且不是最近两帧出现的特征数量
 int FeatureManager::getFeatureCount()
 {
     int cnt = 0;
@@ -41,28 +42,38 @@ int FeatureManager::getFeatureCount()
     return cnt;
 }
 
-
+/**
+ * @brief   把特征点放入feature的list容器中，计算每一个点跟踪次数和它在次新帧和次次新帧间的视差，返回是否是关键帧
+ *          若特征点由来自lidar的深度，则将特征的深度记录为来自lidar的深度
+ * @param[in]   frame_count 窗口内帧的个数
+ * @param[in]   image 某帧所有特征点的[camera_id,[x,y,z,u,v,vx,vy,depth]]s构成的map,索引为feature_id
+ * @param[in]   td IMU和cam同步时间差
+ * @return  bool true：次新帧是关键帧;false：非关键帧
+*/
 bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 8, 1>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
     ROS_DEBUG("num of feature: %d", getFeatureCount());
     double parallax_sum = 0;
     int parallax_num = 0;
-    last_track_num = 0;
+    last_track_num = 0;//跟踪到的特征数
+    //把image map中的所有特征点放入feature list容器中
     for (auto &id_pts : image)
     {
-        FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
+        FeaturePerFrame f_per_fra(id_pts.second[0].second, td);//当前帧内的特征,某帧所有特征点的[[x,y,z,u,v,vx,vy,depth]
 
         // find feature id in the feature bucket
-        int feature_id = id_pts.first;
+        int feature_id = id_pts.first;//特征点索引
+        //查找是否已有当前特征点索引
         auto it = find_if(feature.begin(), feature.end(), [feature_id](const FeaturePerId &it)
                           {return it.feature_id == feature_id;});
 
+        //新特征点
         if (it == feature.end())
         {
             // this feature in the image is observed for the first time, create a new feature object
-            feature.push_back(FeaturePerId(feature_id, frame_count, f_per_fra.depth));
-            feature.back().feature_per_frame.push_back(f_per_fra);
+            feature.push_back(FeaturePerId(feature_id, frame_count, f_per_fra.depth));//记录新特征点的索引和第一次观测到的帧索引
+            feature.back().feature_per_frame.push_back(f_per_fra);//记录特征点信息
         }
         else if (it->feature_id == feature_id)
         {
@@ -71,9 +82,9 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
             last_track_num++;
             // sometimes the feature is first observed without depth 
             // (initialize initial feature depth with current image depth is not exactly accurate if camera moves very fast, then lines bebow can be commented out)
-            if (f_per_fra.depth > 0 && it->lidar_depth_flag == false)
+            if (f_per_fra.depth > 0 && it->lidar_depth_flag == false)//当前特征点有来自lidar的深度，而且之前的深度不是来自lidar
             {
-                it->estimated_depth = f_per_fra.depth;
+                it->estimated_depth = f_per_fra.depth;//记录为lidar的深度
                 it->lidar_depth_flag = true;
                 it->feature_per_frame[0].depth = f_per_fra.depth;
             }
@@ -83,8 +94,10 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     if (frame_count < 2 || last_track_num < 20)
         return true;
 
+    //计算每个特征在次新帧和次次新帧中的视差
     for (auto &it_per_id : feature)
     {
+        //特征所在多于2帧观察到，在次新帧也观察到
         if (it_per_id.start_frame <= frame_count - 2 &&
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1)
         {
@@ -211,39 +224,42 @@ VectorXd FeatureManager::getDepthVector()
     return dep_vec;
 }
 
+//对特征点进行三角化求深度（SVD分解）
 void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
 {
+    //遍历每一个特征
     for (auto &it_per_id : feature)
     {
-        it_per_id.used_num = it_per_id.feature_per_frame.size();
-        if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+        it_per_id.used_num = it_per_id.feature_per_frame.size();//特征出现帧数
+        if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))//出现太少或出现太晚
             continue;
 
         // depth is available, skip triangulation (trust the first estimate)
         if (it_per_id.estimated_depth > 0)
             continue;
-
+        //特征第一次出现在i帧，以下已i帧为参考系，恢复深度
         int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
 
         ROS_ASSERT(NUM_OF_CAM == 1);
         Eigen::MatrixXd svd_A(2 * it_per_id.feature_per_frame.size(), 4);
         int svd_idx = 0;
 
+        //R0 t0为第i帧相机坐标系到世界坐标系的变换矩阵
         Eigen::Matrix<double, 3, 4> P0;
         Eigen::Vector3d t0 = Ps[imu_i] + Rs[imu_i] * tic[0];
         Eigen::Matrix3d R0 = Rs[imu_i] * ric[0];
         P0.leftCols<3>() = Eigen::Matrix3d::Identity();
         P0.rightCols<1>() = Eigen::Vector3d::Zero();
 
-        for (auto &it_per_frame : it_per_id.feature_per_frame)
+        for (auto &it_per_frame : it_per_id.feature_per_frame)//遍历此特征出现的所有帧
         {
             imu_j++;
-
-            Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
-            Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
+            //R t为第j帧相机坐标系到第i帧相机坐标系的变换矩阵，P为i到j的变换矩阵
+            Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];//W系下j帧相机位置
+            Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];//W系下j帧相机姿态
             Eigen::Vector3d t = R0.transpose() * (t1 - t0);
-            Eigen::Matrix3d R = R0.transpose() * R1;
-            Eigen::Matrix<double, 3, 4> P;
+            Eigen::Matrix3d R = R0.transpose() * R1;//camera: i <-- j
+            Eigen::Matrix<double, 3, 4> P;//camera: i <-- j
             P.leftCols<3>() = R.transpose();
             P.rightCols<1>() = -R.transpose() * t;
             Eigen::Vector3d f = it_per_frame.point.normalized();
@@ -255,7 +271,7 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
         }
         ROS_ASSERT(svd_idx == svd_A.rows());
         Eigen::Vector4d svd_V = Eigen::JacobiSVD<Eigen::MatrixXd>(svd_A, Eigen::ComputeThinV).matrixV().rightCols<1>();
-        double svd_method = svd_V[2] / svd_V[3];
+        double svd_method = svd_V[2] / svd_V[3];//其次坐标下，需要z / w得到深度
 
         // update depth from triangulation
         it_per_id.estimated_depth = svd_method;

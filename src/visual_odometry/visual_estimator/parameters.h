@@ -78,14 +78,14 @@ extern double SOLVER_TIME;
 extern int NUM_ITERATIONS;
 extern std::string EX_CALIB_RESULT_PATH;
 extern std::string PROJECT_NAME;
-extern std::string IMU_TOPIC;
+extern std::string IMU_TOPIC;    //imu_raw
 extern double TD;
 extern double TR;
 extern int ESTIMATE_TD;
 extern int ROLLING_SHUTTER;
 extern double ROW, COL;
 
-extern int USE_LIDAR;
+extern int USE_LIDAR; //whether use depth info from lidar or not
 extern int ALIGN_CAMERA_LIDAR_COORDINATE;
 
 void readParameters(ros::NodeHandle &n);
