@@ -102,9 +102,9 @@ public:
     vector<double> extRPYV;
     vector<double> extTransV;
     // extrinsic Lidar <-- IMU from vector<double>
-    Eigen::Matrix3d extRot;
+    Eigen::Matrix3d extRot;//IMU rotation in Lidar frame
     Eigen::Matrix3d extRPY;
-    Eigen::Vector3d extTrans;
+    Eigen::Vector3d extTrans;//
     Eigen::Quaterniond extQRPY;
 
     // LOAM
