@@ -23,7 +23,7 @@ public:
     ros::Publisher pubCornerPoints;
     ros::Publisher pubSurfacePoints;
 
-    pcl::PointCloud<PointType>::Ptr extractedCloud;
+    pcl::PointCloud<PointType>::Ptr extractedCloud;//从imageProjection发布的点云
     pcl::PointCloud<PointType>::Ptr cornerCloud;
     pcl::PointCloud<PointType>::Ptr surfaceCloud;
 
@@ -34,8 +34,8 @@ public:
 
     std::vector<smoothness_t> cloudSmoothness;
     float *cloudCurvature;
-    int *cloudNeighborPicked;
-    int *cloudLabel;
+    int *cloudNeighborPicked;//标记为不能被提取为特征的点（非极大抑制）
+    int *cloudLabel;//1:corner, -1:surface; 0:surface?
 
     FeatureExtraction()
     {
@@ -71,6 +71,7 @@ public:
 
         calculateSmoothness();
 
+        //标记遮挡点和平行点（伪特征）
         markOccludedPoints();
 
         extractFeatures();

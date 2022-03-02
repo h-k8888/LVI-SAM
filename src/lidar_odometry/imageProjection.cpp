@@ -82,7 +82,7 @@ private:
     float odomIncreY;
     float odomIncreZ;
 
-    lvi_sam::cloud_info cloudInfo;
+    lvi_sam::cloud_info cloudInfo;//畸变纠正后点云信息
     double timeScanCur;//当前帧开始时间
     double timeScanNext;//当前帧结束时间（下一帧的起始时间）
     std_msgs::Header cloudHeader;
@@ -296,7 +296,7 @@ public:
             sensor_msgs::Imu thisImuMsg = imuQueue[i];
             double currentImuTime = thisImuMsg.header.stamp.toSec();
 
-            //IMU数据 四元数转欧拉角
+            //IMU数据 四元数转欧拉角，将IMU测量到的rpy记录到cloudInfo中，可能在LIO中作为姿态的初值
             // get roll, pitch, and yaw estimation for this scan
             if (currentImuTime <= timeScanCur)
                 imuRPY2rosRPY(&thisImuMsg, &cloudInfo.imuRollInit, &cloudInfo.imuPitchInit, &cloudInfo.imuYawInit);

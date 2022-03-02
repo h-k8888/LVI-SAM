@@ -53,18 +53,18 @@ public:
 
     // gtsam
     NonlinearFactorGraph gtSAMgraph;
-    Values initialEstimate;
+    Values initialEstimate;//关键帧在因子图中的初值<因子index， 初始pose>
     Values optimizedEstimate;
     ISAM2 *isam;
-    Values isamCurrentEstimate;
-    Eigen::MatrixXd poseCovariance;
+    Values isamCurrentEstimate;//优化后的因子pose<index，pose>
+    Eigen::MatrixXd poseCovariance;//关键帧在因子图中的位姿协方差（过大时引入gps）
 
-    ros::Publisher pubLaserCloudSurround;
-    ros::Publisher pubOdomAftMappedROS;
-    ros::Publisher pubKeyPoses;
-    ros::Publisher pubPath;
+    ros::Publisher pubLaserCloudSurround;//全局地图点云（1000m内）
+    ros::Publisher pubOdomAftMappedROS;//优化后的lidar里程计
+    ros::Publisher pubKeyPoses;//优化后的关键帧位姿
+    ros::Publisher pubPath;//优化后的轨迹
 
-    ros::Publisher pubHistoryKeyFrames;
+    ros::Publisher pubHistoryKeyFrames;//回环关键帧的局部地图
     ros::Publisher pubIcpKeyFrames;
     ros::Publisher pubRecentKeyFrames;
     ros::Publisher pubRecentKeyFrame;
@@ -73,22 +73,24 @@ public:
 
     ros::Subscriber subLaserCloudInfo;
     ros::Subscriber subGPS;
-    ros::Subscriber subLoopInfo;
+    ros::Subscriber subLoopInfo;//接收VINS回环信息
 
-    std::deque<nav_msgs::Odometry> gpsQueue;
-    lvi_sam::cloud_info cloudInfo;
+    std::deque<nav_msgs::Odometry> gpsQueue;//gps odom
+    lvi_sam::cloud_info cloudInfo;//原始点云
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
     
-    pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
-    pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
+    pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;//关键帧的位置（intensity记录keyframe的id）
+    pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;//关键帧位姿
 
+    //当前帧特征点云（lidar系）
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLast; // corner feature set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLast; // surf feature set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudCornerLastDS; // downsampled corner featuer set from odoOptimization
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDS; // downsampled surf featuer set from odoOptimization
 
+    //当前帧作scan to map构造残差
     pcl::PointCloud<PointType>::Ptr laserCloudOri;
     pcl::PointCloud<PointType>::Ptr coeffSel;
 
@@ -99,9 +101,10 @@ public:
     std::vector<PointType> coeffSelSurfVec;
     std::vector<bool> laserCloudOriSurfFlag;
 
+    //local map特征点云（world系）
     pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMap;
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMap;
-    pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;
+    pcl::PointCloud<PointType>::Ptr laserCloudCornerFromMapDS;//down sample
     pcl::PointCloud<PointType>::Ptr laserCloudSurfFromMapDS;
 
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap;
@@ -111,7 +114,7 @@ public:
     pcl::KdTreeFLANN<PointType>::Ptr kdtreeHistoryKeyPoses;
 
     pcl::PointCloud<PointType>::Ptr latestKeyFrameCloud;
-    pcl::PointCloud<PointType>::Ptr nearHistoryKeyFrameCloud;
+    pcl::PointCloud<PointType>::Ptr nearHistoryKeyFrameCloud;//用于回环
 
     pcl::VoxelGrid<PointType> downSizeFilterCorner;
     pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -121,7 +124,7 @@ public:
     ros::Time timeLaserInfoStamp;
     double timeLaserInfoCur;
 
-    float transformTobeMapped[6];
+    float transformTobeMapped[6]; //rpy，xyz，上一帧与地图优化后的增量（作为先验，然后作为迭代优化）
 
     std::mutex mtx;
 
@@ -132,15 +135,16 @@ public:
     int laserCloudSurfLastDSNum = 0;
 
     bool aLoopIsClosed = false;
-    int imuPreintegrationResetId = 0;
+    int imuPreintegrationResetId = 0;//有回环后，IMU重新预积分
 
     nav_msgs::Path globalPath;
 
     Eigen::Affine3f transPointAssociateToMap;
 
+    //检测到的loop因子
     map<int, int> loopIndexContainer; // from new to old
     vector<pair<int, int>> loopIndexQueue;
-    vector<gtsam::Pose3> loopPoseQueue;
+    vector<gtsam::Pose3> loopPoseQueue;//相对pose
     vector<gtsam::noiseModel::Diagonal::shared_ptr> loopNoiseQueue;
 
     mapOptimization()
@@ -148,7 +152,7 @@ public:
         ISAM2Params parameters;
         parameters.relinearizeThreshold = 0.1;
         parameters.relinearizeSkip = 1;
-        isam = new ISAM2(parameters);
+        isam = new ISAM2(parameters); //初始化isam2优化器
 
         pubKeyPoses           = nh.advertise<sensor_msgs::PointCloud2>(PROJECT_NAME + "/lidar/mapping/trajectory", 1);
         pubLaserCloudSurround = nh.advertise<sensor_msgs::PointCloud2>(PROJECT_NAME + "/lidar/mapping/map_global", 1);
@@ -223,9 +227,9 @@ public:
     {
         // extract time stamp
         timeLaserInfoStamp = msgIn->header.stamp;
-        timeLaserInfoCur = msgIn->header.stamp.toSec();
+        timeLaserInfoCur = msgIn->header.stamp.toSec();//点云时间戳
 
-        // extract info ana feature cloud
+        // extract info and feature cloud
         cloudInfo = *msgIn;
         pcl::fromROSMsg(msgIn->cloud_corner,  *laserCloudCornerLast);
         pcl::fromROSMsg(msgIn->cloud_surface, *laserCloudSurfLast);
@@ -233,24 +237,32 @@ public:
         std::lock_guard<std::mutex> lock(mtx);
 
         static double timeLastProcessing = -1;
-        if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval) {
-
+        if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)//时间间隔足够大
+        {
             timeLastProcessing = timeLaserInfoCur;
 
+            //更新当前帧位姿初值（优先通过VINS odometry，VINS失效时使用IMU测量的RPY）
             updateInitialGuess();
 
+            //提取关键帧附近的点云
             extractSurroundingKeyFrames();
 
+            //对当前帧角点和平面点降采样
             downsampleCurrentScan();
 
+            //匹配当前帧与地图，优化求解位姿
             scan2MapOptimization();
 
+            //保存关键帧，添加关键帧到因子图中优化，获得优化后的关键帧位姿
             saveKeyFramesAndFactor();
 
+            //存在回环时，进行回环优化，调整所有关键帧的位姿
             correctPoses();
 
+            //发布里程计
             publishOdometry();
 
+            //发布关键帧点云和路径等
             publishFrames();
         }
     }
@@ -478,14 +490,14 @@ public:
 
 
 
-
+    //接收VINS的回环信息
     void loopHandler(const std_msgs::Float64MultiArray::ConstPtr& loopMsg)
     {
         // control loop closure frequency
         static double last_loop_closure_time = -1;
         {
             // std::lock_guard<std::mutex> lock(mtx);
-            if (timeLaserInfoCur - last_loop_closure_time < 5.0)
+            if (timeLaserInfoCur - last_loop_closure_time < 5.0)//与上一次回环时间间隔大于5s
                 return;
             else
                 last_loop_closure_time = timeLaserInfoCur;
@@ -494,17 +506,20 @@ public:
         performLoopClosure(*loopMsg);
     }
 
+    //loopMsg为时间戳
     void performLoopClosure(const std_msgs::Float64MultiArray& loopMsg)
     {
+        //获取所有关键帧位姿
         pcl::PointCloud<PointTypePose>::Ptr copy_cloudKeyPoses6D(new pcl::PointCloud<PointTypePose>());
         {
             std::lock_guard<std::mutex> lock(mtx);
             *copy_cloudKeyPoses6D = *cloudKeyPoses6D;
         }
 
+        //通过loopMsg的时间来搜索 闭环帧
         // get lidar keyframe id
-        int key_cur = -1; // latest lidar keyframe id
-        int key_pre = -1; // previous lidar keyframe id
+        int key_cur = -1; // latest lidar keyframe id 当前帧
+        int key_pre = -1; // previous lidar keyframe id 闭环帧
         {
             loopFindKey(loopMsg, copy_cloudKeyPoses6D, key_cur, key_pre);
             if (key_cur == -1 || key_pre == -1 || key_cur == key_pre)// || abs(key_cur - key_pre) < 25)
@@ -518,7 +533,8 @@ public:
             if (it != loopIndexContainer.end())
                 return;
         }
-        
+
+        //为当前帧和闭环帧构造local map，进行map to map配准
         // get lidar keyframe cloud
         pcl::PointCloud<PointType>::Ptr cureKeyframeCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr prevKeyframeCloud(new pcl::PointCloud<PointType>());
@@ -527,6 +543,7 @@ public:
             loopFindNearKeyframes(copy_cloudKeyPoses6D, prevKeyframeCloud, key_pre, historyKeyframeSearchNum);
             if (cureKeyframeCloud->size() < 300 || prevKeyframeCloud->size() < 1000)
                 return;
+            //发布 闭环local map
             if (pubHistoryKeyFrames.getNumSubscribers() != 0)
                 publishCloud(&pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, "odom");
         }
@@ -548,6 +565,7 @@ public:
             pose_diff_t = pcl::getTransformation(t_diff.x(), t_diff.y(), t_diff.z(), 0, 0, 0);
         }
 
+        //icp回环配准
         // transform and rotate cloud for matching
         pcl::IterativeClosestPoint<PointType, PointType> icp;
         // pcl::GeneralizedIterativeClosestPoint<PointType, PointType> icp;
@@ -647,6 +665,7 @@ public:
         }
     }
 
+    //为keyframe构造local map
     void loopFindNearKeyframes(const pcl::PointCloud<PointTypePose>::Ptr& copy_cloudKeyPoses6D,
                                pcl::PointCloud<PointType>::Ptr& nearKeyframes, 
                                const int& key, const int& searchNum)
@@ -675,7 +694,7 @@ public:
 
     void loopFindKey(const std_msgs::Float64MultiArray& loopMsg, 
                      const pcl::PointCloud<PointTypePose>::Ptr& copy_cloudKeyPoses6D,
-                     int& key_cur, int& key_pre)
+                     int& key_cur, int& key_pre)//当前帧，闭环帧
     {
         if (loopMsg.data.size() != 2)
             return;
@@ -684,14 +703,14 @@ public:
         double loop_time_pre = loopMsg.data[1];
 
         if (abs(loop_time_cur - loop_time_pre) < historyKeyframeSearchTimeDiff)
-            return;
+            return;//时间间隔太短，认为不是回环
 
         int cloudSize = copy_cloudKeyPoses6D->size();
         if (cloudSize < 2)
             return;
 
         // latest key
-        key_cur = cloudSize - 1;
+        key_cur = cloudSize - 1;//当前帧
         for (int i = cloudSize - 1; i >= 0; --i)
         {
             if (copy_cloudKeyPoses6D->points[i].time > loop_time_cur)
@@ -799,9 +818,12 @@ public:
 
 
     void updateInitialGuess()
-    {        
+    {
+        //处理前保存上一帧的变换（上一关键帧的位姿）
         static Eigen::Affine3f lastImuTransformation;
+
         // system initialization
+        // 初始化，如果没有关键帧，根据IMU信息初始化当前帧的位姿和上次更新时的IMU变换，然后返回
         if (cloudKeyPoses3D->points.empty())
         {
             transformTobeMapped[0] = cloudInfo.imuRollInit;
@@ -809,8 +831,9 @@ public:
             transformTobeMapped[2] = cloudInfo.imuYawInit;
 
             if (!useImuHeadingInitialization)
-                transformTobeMapped[2] = 0;
+                transformTobeMapped[2] = 0;//若以IMU初始化，yaw置零
 
+            //保存IMU的估计值，world <-- last，给下一帧使用
             lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imuRollInit, cloudInfo.imuPitchInit, cloudInfo.imuYawInit); // save imu before return;
             return;
         }
@@ -818,43 +841,53 @@ public:
         // use VINS odometry estimation for pose guess
         static int odomResetId = 0;
         static bool lastVinsTransAvailable = false;
-        static Eigen::Affine3f lastVinsTransformation;
-        if (cloudInfo.odomAvailable == true && cloudInfo.odomResetId == odomResetId)
+        static Eigen::Affine3f lastVinsTransformation;//VINS估计的，前一帧到地图的增量:  w <-- last
+        if (cloudInfo.odomAvailable == true && cloudInfo.odomResetId == odomResetId)//来自VINS的初值估计可用，且序列相同
         {
             // ROS_INFO("Using VINS initial guess");
-            if (lastVinsTransAvailable == false)
+            if (lastVinsTransAvailable == false)//VINS里程计有效，但是上一VINS的变换不可用
             {
+                //如果VINS重启，记录第一帧的odom
                 // ROS_INFO("Initializing VINS initial guess");
+                //保存VINS的估计值，world <-- last，给下一帧使用
                 lastVinsTransformation = pcl::getTransformation(cloudInfo.odomX,    cloudInfo.odomY,     cloudInfo.odomZ, 
                                                                 cloudInfo.odomRoll, cloudInfo.odomPitch, cloudInfo.odomYaw);
                 lastVinsTransAvailable = true;
             } else {
+                //如果VINS正常，通过VINS的里程计得到先验位姿，然后直接返回
                 // ROS_INFO("Obtaining VINS incremental guess");
                 Eigen::Affine3f transBack = pcl::getTransformation(cloudInfo.odomX,    cloudInfo.odomY,     cloudInfo.odomZ, 
                                                                    cloudInfo.odomRoll, cloudInfo.odomPitch, cloudInfo.odomYaw);
-                Eigen::Affine3f transIncre = lastVinsTransformation.inverse() * transBack;
+                Eigen::Affine3f transIncre = lastVinsTransformation.inverse() * transBack;//相对位姿
 
                 Eigen::Affine3f transTobe = trans2Affine3f(transformTobeMapped);
                 Eigen::Affine3f transFinal = transTobe * transIncre;
+                //更新帧到地图的增量
                 pcl::getTranslationAndEulerAngles(transFinal, transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                               transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
 
+                //保存VINS的估计值，world <-- last，给下一帧使用
                 lastVinsTransformation = pcl::getTransformation(cloudInfo.odomX,    cloudInfo.odomY,     cloudInfo.odomZ, 
                                                                 cloudInfo.odomRoll, cloudInfo.odomPitch, cloudInfo.odomYaw);
 
+                //保存IMU的估计值（仅RPY），world <-- last，给下一帧使用
                 lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imuRollInit, cloudInfo.imuPitchInit, cloudInfo.imuYawInit); // save imu before return;
                 return;
             }
         } else {
+            //如果VINS里程计信息不可用
             // ROS_WARN("VINS failure detected.");
-            lastVinsTransAvailable = false;
+            lastVinsTransAvailable = false;//标记VINS不可用
             odomResetId = cloudInfo.odomResetId;
         }
 
+        //VINS里程计无效，或VINS重启时，会使用以下的IMU信息估计初始姿态
         // use imu incremental estimation for pose guess (only rotation)
+        //VINS里程计无效，使用IMU获得初值（只更新旋转）
         if (cloudInfo.imuAvailable == true)
         {
             // ROS_INFO("Using IMU initial guess");
+            //cloudInfo.imuRollInit是IMU对RPY的原始测量值
             Eigen::Affine3f transBack = pcl::getTransformation(0, 0, 0, cloudInfo.imuRollInit, cloudInfo.imuPitchInit, cloudInfo.imuYawInit);
             Eigen::Affine3f transIncre = lastImuTransformation.inverse() * transBack;
 
@@ -863,6 +896,7 @@ public:
             pcl::getTranslationAndEulerAngles(transFinal, transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                           transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
 
+            //保存IMU的估计值（仅RPY），world <-- last，给下一帧使用
             lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imuRollInit, cloudInfo.imuPitchInit, cloudInfo.imuYawInit); // save imu before return;
             return;
         }
@@ -884,6 +918,7 @@ public:
             surroundingKeyPoses->push_back(cloudKeyPoses3D->points[id]);
         }
 
+        //关键帧降采样
         downSizeFilterSurroundingKeyPoses.setInputCloud(surroundingKeyPoses);
         downSizeFilterSurroundingKeyPoses.filter(*surroundingKeyPosesDS);
 
@@ -912,7 +947,7 @@ public:
         #pragma omp parallel for num_threads(numberOfCores)
         for (int i = 0; i < (int)cloudToExtract->size(); ++i)
         {
-            int thisKeyInd = (int)cloudToExtract->points[i].intensity;
+            int thisKeyInd = (int)cloudToExtract->points[i].intensity;//intensify记录了keyframe的id
             if (pointDistance(cloudKeyPoses3D->points[thisKeyInd], cloudKeyPoses3D->back()) > surroundingKeyframeSearchRadius)
                 continue;
             laserCloudCornerSurroundingVec[i]  = *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &cloudKeyPoses6D->points[thisKeyInd]);
@@ -1294,17 +1329,18 @@ public:
                     break;              
             }
 
-            transformUpdate();
+            transformUpdate();//更新结果，将LIO里程计与IMU的RPY测量值融合
         } else {
             ROS_WARN("Not enough features! Only %d edge and %d planar features available.", laserCloudCornerLastDSNum, laserCloudSurfLastDSNum);
         }
     }
 
+    //更新结果，将LIO里程计与IMU的RPY测量值融合
     void transformUpdate()
     {
         if (cloudInfo.imuAvailable == true)
         {
-            if (std::abs(cloudInfo.imuPitchInit) < 1.4)
+            if (std::abs(cloudInfo.imuPitchInit) < 1.4)//俯仰角小于1.4
             {
                 double imuWeight = 0.01;
                 tf::Quaternion imuQuaternion;
@@ -1312,10 +1348,10 @@ public:
                 double rollMid, pitchMid, yawMid;
 
                 // slerp roll
-                transformQuaternion.setRPY(transformTobeMapped[0], 0, 0);
-                imuQuaternion.setRPY(cloudInfo.imuRollInit, 0, 0);
+                transformQuaternion.setRPY(transformTobeMapped[0], 0, 0);//LIO里程计的roll
+                imuQuaternion.setRPY(cloudInfo.imuRollInit, 0, 0);//IMU的roll
                 tf::Matrix3x3(transformQuaternion.slerp(imuQuaternion, imuWeight)).getRPY(rollMid, pitchMid, yawMid);
-                transformTobeMapped[0] = rollMid;
+                transformTobeMapped[0] = rollMid;//roll重置为lidar里程计和IMU测量值的加权值
 
                 // slerp pitch
                 transformQuaternion.setRPY(0, transformTobeMapped[1], 0);
@@ -1325,6 +1361,7 @@ public:
             }
         }
 
+        //控制前后变化量不太大
         transformTobeMapped[0] = constraintTransformation(transformTobeMapped[0], rotation_tollerance);
         transformTobeMapped[1] = constraintTransformation(transformTobeMapped[1], rotation_tollerance);
         transformTobeMapped[5] = constraintTransformation(transformTobeMapped[5], z_tollerance);
@@ -1345,10 +1382,11 @@ public:
         if (cloudKeyPoses3D->points.empty())
             return true;
 
+        //计算当前帧与最新关键帧之间的相对变换
         Eigen::Affine3f transStart = pclPointToAffine3f(cloudKeyPoses6D->back());
         Eigen::Affine3f transFinal = pcl::getTransformation(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
                                                             transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        Eigen::Affine3f transBetween = transStart.inverse() * transFinal;
+        Eigen::Affine3f transBetween = transStart.inverse() * transFinal;//相对变换 lastkeyframe <-- current
         float x, y, z, roll, pitch, yaw;
         pcl::getTranslationAndEulerAngles(transBetween, x, y, z, roll, pitch, yaw);
 
@@ -1482,6 +1520,7 @@ public:
 
     void saveKeyFramesAndFactor()
     {
+        //判断当前帧是否为关键帧,不是关键帧直接返回，不做优化
         if (saveFrame() == false)
             return;
 
@@ -1497,7 +1536,8 @@ public:
         // update iSAM
         isam->update(gtSAMgraph, initialEstimate);
         isam->update();
-        
+
+        //因子图已经加入到isam2中，重置因子图初始值
         gtSAMgraph.resize(0);
         initialEstimate.clear();
 
@@ -1506,6 +1546,7 @@ public:
         PointTypePose thisPose6D;
         Pose3 latestEstimate;
 
+        //isam优化后结果
         isamCurrentEstimate = isam->calculateEstimate();
         latestEstimate = isamCurrentEstimate.at<Pose3>(isamCurrentEstimate.size()-1);
         // cout << "****************************************************" << endl;
@@ -1514,9 +1555,10 @@ public:
         thisPose3D.x = latestEstimate.translation().x();
         thisPose3D.y = latestEstimate.translation().y();
         thisPose3D.z = latestEstimate.translation().z();
-        thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index
-        cloudKeyPoses3D->push_back(thisPose3D);
+        thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index ，intensity记录keyframe的id
+        cloudKeyPoses3D->push_back(thisPose3D);//保存当前帧为关键帧
 
+        //保存当前关键帧位姿
         thisPose6D.x = thisPose3D.x;
         thisPose6D.y = thisPose3D.y;
         thisPose6D.z = thisPose3D.z;
@@ -1530,9 +1572,10 @@ public:
         // cout << "****************************************************" << endl;
         // cout << "Pose covariance:" << endl;
         // cout << isam->marginalCovariance(isamCurrentEstimate.size()-1) << endl << endl;
-        poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size()-1);
+        poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size()-1);//关键帧优化后的协方差
 
         // save updated transform
+        //最新关键帧位姿，即与地图的增量
         transformTobeMapped[0] = latestEstimate.rotation().roll();
         transformTobeMapped[1] = latestEstimate.rotation().pitch();
         transformTobeMapped[2] = latestEstimate.rotation().yaw();
@@ -1554,12 +1597,13 @@ public:
         updatePath(thisPose6D);
     }
 
+    //闭环之后，需要更新所有关键帧的位姿
     void correctPoses()
     {
         if (cloudKeyPoses3D->points.empty())
             return;
 
-        if (aLoopIsClosed == true)
+        if (aLoopIsClosed == true)//是否有回环
         {
             // clear path
             globalPath.poses.clear();
@@ -1584,13 +1628,14 @@ public:
 
             aLoopIsClosed = false;
             // ID for reseting IMU pre-integration
-            ++imuPreintegrationResetId;
+            ++imuPreintegrationResetId;//更新序列
         }
     }
 
     void publishOdometry()
     {
         // Publish odometry for ROS
+        //发布优化后的位姿
         nav_msgs::Odometry laserOdometryROS;
         laserOdometryROS.header.stamp = timeLaserInfoStamp;
         laserOdometryROS.header.frame_id = "odom";
@@ -1599,9 +1644,9 @@ public:
         laserOdometryROS.pose.pose.position.y = transformTobeMapped[4];
         laserOdometryROS.pose.pose.position.z = transformTobeMapped[5];
         laserOdometryROS.pose.pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        laserOdometryROS.pose.covariance[0] = double(imuPreintegrationResetId);
+        laserOdometryROS.pose.covariance[0] = double(imuPreintegrationResetId);//如果有回环，序列会更新
         pubOdomAftMappedROS.publish(laserOdometryROS);
-        // Publish TF
+        // Publish TF  trans_odom_to_lidar
         static tf::TransformBroadcaster br;
         tf::Transform t_odom_to_lidar = tf::Transform(tf::createQuaternionFromRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]),
                                                       tf::Vector3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
