@@ -199,7 +199,7 @@ public:
             // 通过最终优化过的雷达位姿初始化先验的位姿信息并添加到非线性因子图中
             // 系统初始化时，odom系下，根据外参计算出的
             prevPose_ = lidarPose.compose(lidar2Imu);//当前lidar pose对应的imu pose
-            gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), prevPose_, priorPoseNoise);//fixed
+            gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), prevPose_, priorPoseNoise);
             graphFactors.add(priorPose);
 
             // initial velocity
