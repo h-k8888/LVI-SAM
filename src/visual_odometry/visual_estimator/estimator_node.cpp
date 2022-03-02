@@ -374,7 +374,7 @@ int main(int argc, char **argv)
     odomRegister = new odometryRegister(n);
 
     ros::Subscriber sub_imu     = n.subscribe(IMU_TOPIC,      5000, imu_callback,  ros::TransportHints().tcpNoDelay());
-    ros::Subscriber sub_odom    = n.subscribe("odometry/imu", 5000, odom_callback);//使用lidar深度
+    ros::Subscriber sub_odom    = n.subscribe("odometry/imu", 5000, odom_callback);//记录lidar里程计，使用lidar深度
     ros::Subscriber sub_image   = n.subscribe(PROJECT_NAME + "/vins/feature/feature", 1, feature_callback);
     ros::Subscriber sub_restart = n.subscribe(PROJECT_NAME + "/vins/feature/restart", 1, restart_callback);
     if (!USE_LIDAR)//不使用lidar点云则关闭

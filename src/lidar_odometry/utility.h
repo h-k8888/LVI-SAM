@@ -70,7 +70,7 @@ public:
     std::string robot_id;
 
     string pointCloudTopic;
-    string imuTopic;
+    string imuTopic;// "/imu_raw"
     string odomTopic;
     string gpsTopic;
 
@@ -96,9 +96,12 @@ public:
     float imuAccBiasN;
     float imuGyrBiasN;
     float imuGravity;
+
+    // extrinsic Lidar <-- IMU(extRot, extRPY, extTrans)
     vector<double> extRotV;
     vector<double> extRPYV;
     vector<double> extTransV;
+    // extrinsic Lidar <-- IMU from vector<double>
     Eigen::Matrix3d extRot;
     Eigen::Matrix3d extRPY;
     Eigen::Vector3d extTrans;
@@ -212,6 +215,7 @@ public:
         usleep(100);
     }
 
+    //IMU坐标变换，Lidar <-- IMU
     sensor_msgs::Imu imuConverter(const sensor_msgs::Imu& imu_in)
     {
         sensor_msgs::Imu imu_out = imu_in;
@@ -229,7 +233,7 @@ public:
         imu_out.angular_velocity.z = gyr.z();
         // rotate roll pitch yaw
         Eigen::Quaterniond q_from(imu_in.orientation.w, imu_in.orientation.x, imu_in.orientation.y, imu_in.orientation.z);
-        Eigen::Quaterniond q_final = q_from * extQRPY;
+        Eigen::Quaterniond q_final = q_from * extQRPY;//旋转IMU坐标系到lidar
         imu_out.orientation.x = q_final.x();
         imu_out.orientation.y = q_final.y();
         imu_out.orientation.z = q_final.z();
