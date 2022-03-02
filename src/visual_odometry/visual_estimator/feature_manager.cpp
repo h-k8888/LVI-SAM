@@ -299,6 +299,9 @@ void FeatureManager::removeOutlier()
     }
 }
 
+//边缘化最老帧时，处理特征点保存的帧号，将起始帧是最老帧的特征点的深度值进行转移
+//marg_R、marg_P为被边缘化的位姿，new_R、new_P为在这下一帧的位姿
+//视觉特征点优先采用来自lidar的深度
 void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3d marg_P, Eigen::Matrix3d new_R, Eigen::Vector3d new_P)
 {
     for (auto it = feature.begin(), it_next = feature.begin();
@@ -306,13 +309,14 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
     {
         it_next++;
 
-        if (it->start_frame != 0)
+        if (it->start_frame != 0)// 如果不是被移除的帧看到，那么该地图点对应的起始帧id减一
             it->start_frame--;
         else
         {
             // feature point and depth in old local camera frame
-            Eigen::Vector3d uv_i = it->feature_per_frame[0].point;
-            double depth = -1;
+            //特征点起始帧是最老帧
+            Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  // 取出归一化相机坐标系坐标
+            double depth = -1;//用于记录已得到的深度，可能来自lidar或视觉三角化
             if (it->feature_per_frame[0].depth > 0)
                 // if lidar depth available at this frame for feature
                 depth = it->feature_per_frame[0].depth;
@@ -321,9 +325,9 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                 depth = it->estimated_depth;
 
             // delete current feature in the old local camera frame
-            it->feature_per_frame.erase(it->feature_per_frame.begin());
+            it->feature_per_frame.erase(it->feature_per_frame.begin());// 该点不再被原来的第一帧看到，因此从中移除
 
-            if (it->feature_per_frame.size() < 2)
+            if (it->feature_per_frame.size() < 2)//特征点只在最老帧被观测则直接移除
             {
                 // delete feature from feature manager
                 feature.erase(it);
@@ -334,11 +338,12 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                 Eigen::Vector3d pts_i = uv_i * depth; // feature in cartisian space in old local camera frame
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P; // feautre in cartisian space in world frame
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P); // feature in cartisian space in shifted local camera frame
-                double dep_j = pts_j(2);
+                double dep_j = pts_j(2);//转换坐标系后的深度
 
                 // after deletion, the feature has lidar depth in the first of the remaining frame
-                if (it->feature_per_frame[0].depth > 0)
+                if (it->feature_per_frame[0].depth > 0)//如果在剩余帧的第一帧中，该特征点有lidar的深度
                 {
+                    //将其深度设为来自lidar的深度
                     it->estimated_depth = it->feature_per_frame[0].depth;
                     it->lidar_depth_flag = true;
                 } 
@@ -377,12 +382,13 @@ void FeatureManager::removeBack()
     }
 }
 
+//边缘化次新帧时，对特征点在次新帧的信息进行移除处理
 void FeatureManager::removeFront(int frame_count)
 {
     for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next)
     {
         it_next++;
-
+        //起始帧为最新帧的滑动成次新帧
         if (it->start_frame == frame_count)
         {
             it->start_frame--;
@@ -390,8 +396,10 @@ void FeatureManager::removeFront(int frame_count)
         else
         {
             int j = WINDOW_SIZE - 1 - it->start_frame;
-            if (it->endFrame() < frame_count - 1)
+            if (it->endFrame() < frame_count - 1)//如果次新帧之前已经跟踪结束则什么都不做
                 continue;
+            //如果在次新帧仍被跟踪，则删除feature_per_frame中次新帧对应的FeaturePerFrame
+            //如果feature_per_frame为空则直接删除特征点
             it->feature_per_frame.erase(it->feature_per_frame.begin() + j);
             if (it->feature_per_frame.size() == 0)
                 feature.erase(it);
@@ -399,6 +407,7 @@ void FeatureManager::removeFront(int frame_count)
     }
 }
 
+//计算某个特征点it_per_id在次新帧和次次新帧的视差
 double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int frame_count)
 {
     //check the second last frame is keyframe or not
@@ -407,7 +416,7 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
     const FeaturePerFrame &frame_j = it_per_id.feature_per_frame[frame_count - 1 - it_per_id.start_frame];
 
     double ans = 0;
-    Vector3d p_j = frame_j.point;
+    Vector3d p_j = frame_j.point;//3D特征
 
     double u_j = p_j(0);
     double v_j = p_j(1);

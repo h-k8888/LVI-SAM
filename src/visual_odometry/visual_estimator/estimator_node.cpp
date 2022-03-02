@@ -334,7 +334,7 @@ void process()
             initialization_info = odomRegister->getOdometry(odomQueue, img_msg->header.stamp.toSec() + estimator.td);
             m_odom.unlock();
 
-            //todo 处理图像核心函数 传入参数（特征点hash，camera里程计（由最近lidar里程计转换而来）， 当前image时间戳）
+            ///处理图像核心函数 传入参数（特征点hash，camera里程计（由最近lidar里程计转换而来）， 当前image时间戳）
             estimator.processImage(image, initialization_info, img_msg->header);
             // double whole_t = t_s.toc();
             // printStatistics(estimator, whole_t);

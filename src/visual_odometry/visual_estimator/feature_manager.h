@@ -47,13 +47,13 @@ class FeaturePerId
 {
   public:
     const int feature_id;
-    int start_frame;
+    int start_frame;//滑窗内观测到此特征的起始图像帧索引
     vector<FeaturePerFrame> feature_per_frame;
 
     int used_num;
     bool is_outlier;
     bool is_margin;
-    double estimated_depth;
+    double estimated_depth;//visual depth
     bool lidar_depth_flag;//depth是否来自lidar
     int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail;
 
