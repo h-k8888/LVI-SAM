@@ -144,6 +144,8 @@ public:
     float globalMapVisualizationPoseDensity;
     float globalMapVisualizationLeafSize;
 
+    bool save_path;
+
     ParamServer()
     {
         nh.param<std::string>("/PROJECT_NAME", PROJECT_NAME, "sam");
@@ -211,6 +213,8 @@ public:
         nh.param<float>(PROJECT_NAME + "/globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius, 1e3);
         nh.param<float>(PROJECT_NAME + "/globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity, 10.0);
         nh.param<float>(PROJECT_NAME + "/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
+
+        nh.param<bool>(PROJECT_NAME + "/save_path", save_path, false);
 
         usleep(100);
     }
