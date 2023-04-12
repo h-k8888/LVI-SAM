@@ -124,7 +124,7 @@ add_executable(${PROJECT_NAME}_featureExtraction src/lidar_odometry/featureExtra
 add_dependencies(${PROJECT_NAME}_featureExtraction ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(${PROJECT_NAME}_featureExtraction ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
 # Mapping Optimization
-add_executable(${PROJECT_NAME}_mapOptmization src/lidar_odometry/mapOptmization.cpp)
+add_executable(${PROJECT_NAME}_mapOptmization src/lidar_odometry/mapOptmization.cpp src/lidar_odometry/voxel_grid_omp.cpp)
 add_dependencies(${PROJECT_NAME}_mapOptmization ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_compile_options(${PROJECT_NAME}_mapOptmization PRIVATE ${OpenMP_CXX_FLAGS})
 target_link_libraries(${PROJECT_NAME}_mapOptmization PRIVATE ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} gtsam)

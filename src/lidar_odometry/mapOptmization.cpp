@@ -1,5 +1,6 @@
 #include "utility.h"
 #include "lvi_sam/cloud_info.h"
+#include "voxel_grid_omp.h"
 
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
@@ -120,7 +121,8 @@ public:
     pcl::VoxelGrid<PointType> downSizeFilterSurf;
     pcl::VoxelGrid<PointType> downSizeFilterICP;
     pcl::VoxelGrid<PointType> downSizeFilterSurroundingKeyPoses; // for surrounding key poses of scan-to-map optimization
-    
+    pcl::VoxelGridOMP downSizeOMPFilterSurf;
+
     ros::Time timeLaserInfoStamp;
     double timeLaserInfoCur;
 
@@ -175,6 +177,11 @@ public:
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
         downSizeFilterICP.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
         downSizeFilterSurroundingKeyPoses.setLeafSize(surroundingKeyframeDensity, surroundingKeyframeDensity, surroundingKeyframeDensity); // for surrounding key poses of scan-to-map optimization
+
+        downSizeOMPFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+        downSizeOMPFilterSurf.setNumberOfThreads(numberOfCores);
+        downSizeOMPFilterSurf.setFinalFilter(true);
+        downSizeOMPFilterSurf.setMinimumPointsNumberPerVoxel(2);
 
         allocateMemory();
     }
@@ -967,8 +974,21 @@ public:
         downSizeFilterCorner.setInputCloud(laserCloudCornerFromMap);
         downSizeFilterCorner.filter(*laserCloudCornerFromMapDS);
         // Downsample the surrounding surf key frames (or map)
-        downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
-        downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
+        if ((int)laserCloudSurfFromMap->size() > OMPMapPoints) {
+            TicToc t_sds_omp;
+            downSizeOMPFilterSurf.setInputCloud(laserCloudSurfFromMap);
+            downSizeOMPFilterSurf.filter(*laserCloudSurfFromMapDS);
+//            ROS_WARN("submap surface OMP: %d -->> %d, cost: %fms", (int) laserCloudSurfFromMap->size(),
+//                     (int) laserCloudSurfFromMapDS->size(), t_sds_omp.toc());
+        }
+        else {
+            TicToc t_sds;
+            // Downsample the surrounding surf key frames (or map)
+            downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
+            downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
+//            ROS_WARN("submap surface: %d -->> %d, cost: %fms", (int) laserCloudSurfFromMap->size(),
+//                     (int) laserCloudSurfFromMapDS->size(), t_sds.toc());
+        }
     }
 
     void extractSurroundingKeyFrames()

@@ -145,6 +145,7 @@ public:
     float globalMapVisualizationLeafSize;
 
     bool save_path;
+    int OMPMapPoints;
 
     ParamServer()
     {
@@ -215,6 +216,7 @@ public:
         nh.param<float>(PROJECT_NAME + "/globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
 
         nh.param<bool>(PROJECT_NAME + "/save_path", save_path, false);
+        nh.param<int>(PROJECT_NAME + "/OMPMapPoints", OMPMapPoints, 100000);
 
         usleep(100);
     }
