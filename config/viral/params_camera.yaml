@@ -22,31 +22,31 @@ lidar_to_cam_rx: 0.0
 lidar_to_cam_ry: -0.01
 lidar_to_cam_rz: -0.02
 
-#获取深度时，相机坐标系与lidar坐标系的变换, R: lidar <-- camera
-depth_camera_to_lidar_Rotation: !!opencv-matrix
-  rows: 3
-  cols: 3
-  dt: d
-  data: [0, 0, 1,
-         1, 0, 0,
-         0, 1, 0]
+##获取深度时，相机坐标系与lidar坐标系的变换, R: lidar <-- camera
+#depth_camera_to_lidar_Rotation: !!opencv-matrix
+#  rows: 3
+#  cols: 3
+#  dt: d
+#  data: [0, 0, 1,
+#         1, 0, 0,
+#         0, 1, 0]
 
-#odom --> vins_world
-odom_to_vins_w_rx: 0.0
-odom_to_vins_w_ry: 0.0
-odom_to_vins_w_rz: 0.0
-odom_to_vins_w_tx: -0.05
-odom_to_vins_w_ty: 0.0
-odom_to_vins_w_tz: -0.055
-#3.1415926535897
+##odom --> vins_world
+#odom_to_vins_w_rx: 0.0
+#odom_to_vins_w_ry: 0.0
+#odom_to_vins_w_rz: 0.0
+#odom_to_vins_w_tx: -0.05
+#odom_to_vins_w_ty: 0.0
+#odom_to_vins_w_tz: -0.055
+##3.1415926535897
 
-# lidar --> vins_body(vins IMU), vins imu 系下 lidar位姿
-lidar_to_vins_body_rx: 3.1415926535897
-lidar_to_vins_body_ry: 0.0
-lidar_to_vins_body_rz: 0.0
-lidar_to_vins_body_tx: -0.05
-lidar_to_vins_body_ty: 0.0
-lidar_to_vins_body_tz: -0.055
+## lidar --> vins_body(vins IMU), vins imu 系下 lidar位姿
+#lidar_to_vins_body_rx: 3.1415926535897
+#lidar_to_vins_body_ry: 0.0
+#lidar_to_vins_body_rz: 0.0
+#lidar_to_vins_body_tx: -0.05
+#lidar_to_vins_body_ty: 0.0
+#lidar_to_vins_body_tz: -0.055
 
 # camera model
 model_type: PINHOLE
@@ -92,7 +92,7 @@ extrinsicTranslation: !!opencv-matrix
    rows: 3
    cols: 1
    dt: d
-   data: [ 0.00519443, 0.1347802, 0.01465067 ]
+   data: [ 0.00519443, -0.1347802, -0.01465067 ]
 
 #feature traker paprameters
 max_cnt: 150            # max feature number in feature tracking

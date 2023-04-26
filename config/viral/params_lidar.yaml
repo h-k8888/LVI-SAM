@@ -8,6 +8,7 @@ lvi_sam:
   imuTopic: "/imu/imu_mod"                         # IMU data
 
   save_path: true    #to /tmp/path.txt
+  OMPMapPoints: 999999999                      # default: 0.4
 
   # Heading
   useImuHeadingInitialization: true          # if using GPS data, set to "true"

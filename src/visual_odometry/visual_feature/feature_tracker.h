@@ -148,9 +148,9 @@ public:
             feature_cur.normalize(); 
             // convert to ROS standard
             PointType p;
-            p.x =  feature_cur(2);
-            p.y = -feature_cur(0);
-            p.z = -feature_cur(1);
+            p.x = feature_cur(2);
+            p.y = feature_cur(0);
+            p.z = feature_cur(1);
             p.intensity = -1; // intensity will be used to save depth
             features_3d_sphere->push_back(p);
         }
@@ -288,9 +288,9 @@ public:
             for (int i = 0; i < (int)depth_cloud_local->size(); ++i)
             {
                 // convert points from 3D to 2D
-                Eigen::Vector3d p_3d(-depth_cloud_local->points[i].y,
-                                     -depth_cloud_local->points[i].z,
-                                      depth_cloud_local->points[i].x);
+                Eigen::Vector3d p_3d(depth_cloud_local->points[i].y,
+                                     depth_cloud_local->points[i].z,
+                                     depth_cloud_local->points[i].x);
                 Eigen::Vector2d p_2d;
                 camera_model->spaceToPlane(p_3d, p_2d);
                 
